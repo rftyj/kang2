@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>趣味臉部辨識</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+        
+        #container {
+            position: relative;
+            width: 1280px;
+            height: 720px;
+        }
+        
+        #webcam {
+            position: absolute;
+            width: 1280px;
+            height: 720px;
+            transform: rotateY(180deg);
+        }
+        
+        #output_canvas {
+            position: absolute;
+            width: 1280px;
+            height: 720px;
+            transform: rotateY(180deg);
+        }
+        
+        #status {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div id="status">系統狀態: 初始化中...</div>
+    <div id="container">
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="output_canvas"></canvas>
+    </div>
+
+    <script type="module">
+        import vision from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
+        const { FaceLandmarker, FilesetResolver, DrawingUtils } = vision;
+        
+        const statusDiv = document.getElementById('status');
+        const video = document.getElementById('webcam');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        
+        let faceLandmarker;
+        let lastVideoTime = -1;
+        let results = undefined;
+        let lastStarTime = 0;
+        const starInterval = 50; // 每50ms產生一顆星星
+        
+        // 載入煎蛋眼睛圖片
+        const eggEyeImage = new Image();
+        eggEyeImage.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAGjWlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNy4yLWMwMDAgNzkuMWI2NWE3OWI0LCAyMDIyLzA2LzEzLTIyOjAxOjAxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOnhtcE1NPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvbW0vIiB4bWxuczpzdEV2dD0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL3NUeXBlL1Jlc291cmNlRXZlbnQjIiB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iIHhtbG5zOnBob3Rvc2hvcD0iaHR0cDovL25zLmFkb2JlLmNvbS9waG90b3Nob3AvMS4wLyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgMjQuMCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMjQtMDMtMTlUMTY6NDc6NDUrMDg6MDAiIHhtcDpNZXRhZGF0YURhdGU9IjIwMjQtMDMtMTlUMTY6NDc6NDUrMDg6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDI0LTAzLTE5VDE2OjQ3OjQ1KzA4OjAwIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOjY5ZDM0ZmQ1LTU0ZDItNDZiYi1hZmQ1LTNkNzE0ZjVhMzVlZiIgeG1wTU06RG9jdW1lbnRJRD0iYWRvYmU6ZG9jaWQ6cGhvdG9zaG9wOjY5ZDM0ZmQ1LTU0ZDItNDZiYi1h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';
+
+        // 星星粒子系統
+        class Star {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 10; // 水平速度
+                this.vy = -Math.random() * 15; // 垂直速度
+                this.gravity = 0.5; // 重力
+                this.alpha = 1; // 透明度
+                this.size = Math.random() * 10 + 5; // 星星大小
+            }
+
+            update() {
+                this.x += this.vx;
+                this.vy += this.gravity;
+                this.y += this.vy;
+                this.alpha -= 0.02; // 逐漸變透明
+                return this.alpha > 0;
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = '#FFD700';
+                ctx.beginPath();
+                for(let i = 0; i < 5; i++) {
+                    const angle = (i * 4 * Math.PI) / 5 - Math.PI / 2;
+                    const x = this.x + Math.cos(angle) * this.size;
+                    const y = this.y + Math.sin(angle) * this.size;
+                    if(i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        let stars = [];
+        
+        // 設定畫布大小
+        canvasElement.width = 1280;
+        canvasElement.height = 720;
+        
+        async function initializeFaceLandmarker() {
+            try {
+                statusDiv.textContent = "系統狀態: 載入模型中...";
+                
+                const filesetResolver = await FilesetResolver.forVisionTasks(
+                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+                );
+                
+                faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+                    baseOptions: {
+                        modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task`,
+                        delegate: "GPU"
+                    },
+                    outputFaceBlendshapes: true,
+                    runningMode: "VIDEO",
+                    numFaces: 1
+                });
+                
+                statusDiv.textContent = "系統狀態: 模型載入完成，啟動攝影機...";
+                startCamera();
+                
+            } catch (error) {
+                statusDiv.textContent = `錯誤: ${error.message}`;
+                console.error(error);
+            }
+        }
+        
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: 1280,
+                        height: 720
+                    }
+                });
+                
+                video.srcObject = stream;
+                video.addEventListener('loadeddata', predictWebcam);
+                statusDiv.textContent = "系統狀態: 攝影機運作中";
+                
+            } catch (error) {
+                statusDiv.textContent = `錯誤: 無法存取攝影機 - ${error.message}`;
+                console.error(error);
+            }
+        }
+        
+        const drawingUtils = new DrawingUtils(canvasCtx);
+
+        function getMouthOpenness(landmarks) {
+            // 上唇中點（13）和下唇中點（14）的距離
+            const upperLip = landmarks[13];
+            const lowerLip = landmarks[14];
+            return Math.abs(upperLip.y - lowerLip.y);
+        }
+        
+        async function predictWebcam() {
+            if (!faceLandmarker) {
+                window.requestAnimationFrame(predictWebcam);
+                return;
+            }
+            
+            let startTimeMs = performance.now();
+            
+            if (lastVideoTime !== video.currentTime) {
+                lastVideoTime = video.currentTime;
+                results = faceLandmarker.detectForVideo(video, startTimeMs);
+            }
+            
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            
+            // 更新和繪製所有星星
+            stars = stars.filter(star => {
+                const isAlive = star.update();
+                if (isAlive) {
+                    star.draw(canvasCtx);
+                }
+                return isAlive;
+            });
+            
+            if (results.faceLandmarks) {
+                for (const landmarks of results.faceLandmarks) {
+                    // 檢查嘴巴是否張開
+                    const mouthOpenness = getMouthOpenness(landmarks);
+                    if (mouthOpenness > 0.1) { // 調整這個閾值以符合需求
+                        // 計算嘴巴中心位置
+                        const mouthX = (landmarks[13].x + landmarks[14].x) / 2 * canvasElement.width;
+                        const mouthY = (landmarks[13].y + landmarks[14].y) / 2 * canvasElement.height;
+                        
+                        // 每隔一定時間產生新的星星
+                        if (startTimeMs - lastStarTime > starInterval) {
+                            stars.push(new Star(mouthX, mouthY));
+                            lastStarTime = startTimeMs;
+                        }
+                    }
+
+                    // 繪製左眼
+                    const leftEyeX = landmarks[33].x * canvasElement.width - 75;
+                    const leftEyeY = landmarks[33].y * canvasElement.height - 75;
+                    canvasCtx.drawImage(eggEyeImage, leftEyeX, leftEyeY, 150, 150);
+
+                    // 繪製右眼
+                    const rightEyeX = landmarks[263].x * canvasElement.width - 75;
+                    const rightEyeY = landmarks[263].y * canvasElement.height - 75;
+                    canvasCtx.drawImage(eggEyeImage, rightEyeX, rightEyeY, 150, 150);
+                }
+                statusDiv.textContent = "系統狀態: 偵測到臉部";
+            } else {
+                statusDiv.textContent = "系統狀態: 未偵測到臉部";
+            }
+            
+            window.requestAnimationFrame(predictWebcam);
+        }
+        
+        // 啟動程式
+        initializeFaceLandmarker();
+    </script>
+</body>
+</html>

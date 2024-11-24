@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>物理物件生成器</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+        #info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px;
+            font-family: Arial, sans-serif;
+            border-radius: 5px;
+        }
+        #controls {
+            position: fixed;
+            top: 50px;
+            left: 10px;
+            z-index: 1000;
+        }
+        
+        #blackHoleBtn {
+            background: linear-gradient(45deg, #000000, #434343);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: Arial, sans-serif;
+            box-shadow: 0 0 10px rgba(255,255,255,0.3);
+            transition: all 0.3s ease;
+        }
+        
+        #blackHoleBtn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(255,255,255,0.5);
+        }
+        
+        /* 新增黑洞按鈕的啟用狀態樣式 */
+        #blackHoleBtn.active {
+            background: linear-gradient(45deg, #ff0000, #800000);
+            box-shadow: 0 0 15px rgba(255,0,0,0.5);
+        }
+    </style>
+</head>
+<body>
+    <div id="info">物體數量: 0 | FPS: 0</div>
+    <div id="controls">
+        <button id="blackHoleBtn">產生黑洞</button>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <script>
+        const Engine = Matter.Engine,
+              Render = Matter.Render,
+              World = Matter.World,
+              Bodies = Matter.Bodies,
+              Mouse = Matter.Mouse,
+              MouseConstraint = Matter.MouseConstraint,
+              Constraint = Matter.Constraint,
+              Events = Matter.Events,
+              Body = Matter.Body;
+
+        const engine = Engine.create();
+        const render = Render.create({
+            element: document.body,
+            engine: engine,
+            options: {
+                width: window.innerWidth,
+                height: window.innerHeight,
+                wireframes: false
+            }
+        });
+
+        // 加入滑鼠控制
+        const mouse = Mouse.create(render.canvas);
+        const mouseConstraint = MouseConstraint.create(engine, {
+            mouse: mouse,
+            constraint: {
+                stiffness: 0.2,
+                render: {
+                    visible: false
+                }
+            }
+        });
+
+        World.add(engine.world, mouseConstraint);
+        render.mouse = mouse;
+
+        // 修改邊界牆壁的設置
+        const walls = [
+            // 上方牆壁
+            Bodies.rectangle(window.innerWidth/2, -10, window.innerWidth, 20, { 
+                isStatic: true,
+                render: { fillStyle: '#222222' }
+            }),
+            // 下方牆壁 - 調整位置到可見範圍內
+            Bodies.rectangle(window.innerWidth/2, window.innerHeight, window.innerWidth, 20, { 
+                isStatic: true,
+                render: { fillStyle: '#222222' }
+            }),
+            // 左側牆壁
+            Bodies.rectangle(-10, window.innerHeight/2, 20, window.innerHeight, { 
+                isStatic: true,
+                render: { fillStyle: '#222222' }
+            }),
+            // 右側牆壁
+            Bodies.rectangle(window.innerWidth+10, window.innerHeight/2, 20, window.innerHeight, { 
+                isStatic: true,
+                render: { fillStyle: '#222222' }
+            })
+        ];
+
+        World.add(engine.world, walls);
+
+        // 調整引擎的重力
+        engine.world.gravity.y = 1; // 可以調整這個值來改變重力大小
+
+        // 新增視窗大小改變時的處理
+        window.addEventListener('resize', () => {
+            // 更新渲染器大小
+            render.canvas.width = window.innerWidth;
+            render.canvas.height = window.innerHeight;
+
+            // 更新牆壁位置
+            World.remove(engine.world, walls);
+            walls[0].position.x = window.innerWidth/2;
+            walls[1].position.x = window.innerWidth/2;
+            walls[1].position.y = window.innerHeight;
+            walls[2].position.y = window.innerHeight/2;
+            walls[3].position.x = window.innerWidth+10;
+            walls[3].position.y = window.innerHeight/2;
+            World.add(engine.world, walls);
+        });
+
+        Engine.run(engine);
+        Render.run(render);
+
+        let isMouseDown = false;
+        let spawnInterval;
+        let lastTime = performance.now();
+        let frames = 0;
+        let fps = 0;
+
+        // 產生隨機顏色
+        function getRandomColor() {
+            const hue = Math.random() * 360;
+            return `hsl(${hue}, 100%, 50%)`;
+        }
+
+        // 產生隨機形狀
+        function createRandomBody(x, y) {
+            const size = 20 + Math.random() * 30;
+            const shapes = [
+                () => Bodies.rectangle(x, y, size, size, {
+                    render: { fillStyle: getRandomColor() }
+                }),
+                () => Bodies.circle(x, y, size/2, {
+                    render: { fillStyle: getRandomColor() }
+                }),
+                () => Bodies.polygon(x, y, Math.floor(3 + Math.random() * 5), size/2, {
+                    render: { fillStyle: getRandomColor() }
+                }),
+                () => Bodies.trapezoid(x, y, size, size, 0.5, {
+                    render: { fillStyle: getRandomColor() }
+                })
+            ];
+            return shapes[Math.floor(Math.random() * shapes.length)]();
+        }
+
+        // 更新資訊顯示
+        function updateInfo() {
+            frames++;
+            const currentTime = performance.now();
+            if (currentTime - lastTime >= 1000) {
+                fps = frames;
+                frames = 0;
+                lastTime = currentTime;
+            }
+            document.getElementById('info').textContent = 
+                `物體數量: ${engine.world.bodies.length - 4} | FPS: ${fps}`;
+            requestAnimationFrame(updateInfo);
+        }
+        updateInfo();
+
+        // 修改滑鼠事件處理
+        document.addEventListener('mousedown', (e) => {
+            // 檢查是否點擊到物體
+            const bodies = Matter.Query.point(engine.world.bodies, {
+                x: e.clientX,
+                y: e.clientY
+            });
+
+            // 如果沒有點擊到物體，則開始生成新物體
+            if (bodies.length === 0 || bodies.every(body => body.isStatic)) {
+                spawnInterval = setInterval(() => {
+                    const body = createRandomBody(e.clientX, e.clientY);
+                    World.add(engine.world, body);
+                }, 100);
+            }
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (spawnInterval) {
+                const body = createRandomBody(e.clientX, e.clientY);
+                World.add(engine.world, body);
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (spawnInterval) {
+                clearInterval(spawnInterval);
+                spawnInterval = null;
+            }
+        });
+
+        // 新增黑洞相關變數
+        let blackHoles = [];
+        const ATTRACTION_RADIUS = 400;
+        const BLACK_HOLE_SIZE = 40;
+        const DESTROY_RADIUS = 50;
+        const MAX_ATTRACTION_FORCE = 0.008;
+
+        let isBlackHoleActive = false;
+        let blackHole = null;
+        let glowEffect = null;
+        let mousePosition = { x: 0, y: 0 };
+
+        // 追蹤滑鼠位置
+        document.addEventListener('mousemove', (event) => {
+            mousePosition.x = event.clientX;
+            mousePosition.y = event.clientY;
+            
+            // 如果黑洞存在，更新其位置
+            if (isBlackHoleActive && blackHole && glowEffect) {
+                Body.setPosition(blackHole, {
+                    x: mousePosition.x,
+                    y: mousePosition.y
+                });
+                Body.setPosition(glowEffect, {
+                    x: mousePosition.x,
+                    y: mousePosition.y
+                });
+            }
+        });
+
+        document.getElementById('blackHoleBtn').addEventListener('click', () => {
+            const btn = document.getElementById('blackHoleBtn');
+            
+            if (!isBlackHoleActive) {
+                // 在滑鼠位置產生黑洞
+                blackHole = Bodies.circle(
+                    mousePosition.x,
+                    mousePosition.y,
+                    BLACK_HOLE_SIZE,
+                    {
+                        isStatic: true,
+                        render: {
+                            fillStyle: '#000000',
+                            strokeStyle: '#ffffff',
+                            lineWidth: 2
+                        },
+                        label: 'blackHole'
+                    }
+                );
+
+                glowEffect = Bodies.circle(
+                    mousePosition.x,
+                    mousePosition.y,
+                    ATTRACTION_RADIUS,
+                    {
+                        isStatic: true,
+                        isSensor: true,
+                        render: {
+                            fillStyle: 'rgba(0,0,0,0.05)',
+                            strokeStyle: 'rgba(255,255,255,0.1)',
+                            lineWidth: 2
+                        }
+                    }
+                );
+
+                blackHoles = [blackHole];
+                World.add(engine.world, [glowEffect, blackHole]);
+                
+                btn.textContent = '關閉黑洞';
+                btn.classList.add('active');
+                isBlackHoleActive = true;
+            } else {
+                // 移除黑洞
+                if (blackHole) {
+                    World.remove(engine.world, blackHole);
+                }
+                if (glowEffect) {
+                    World.remove(engine.world, glowEffect);
+                }
+                blackHole = null;
+                glowEffect = null;
+                blackHoles = [];
+                
+                btn.textContent = '產生黑洞';
+                btn.classList.remove('active');
+                isBlackHoleActive = false;
+            }
+        });
+
+        // 修改吸引力效果的計算方式
+        Events.on(engine, 'beforeUpdate', function() {
+            if (isBlackHoleActive && blackHole) {
+                const bodies = engine.world.bodies;
+                
+                bodies.forEach(body => {
+                    if (!body.isStatic && body.label !== 'blackHole' && !body.isSensor) {
+                        const dx = blackHole.position.x - body.position.x;
+                        const dy = blackHole.position.y - body.position.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+
+                        if (distance < ATTRACTION_RADIUS) {
+                            // 根據距離計算力量強度（越近力量越大）
+                            const forceMagnitude = (1 - distance / ATTRACTION_RADIUS) * MAX_ATTRACTION_FORCE;
+                            
+                            const force = {
+                                x: (dx / distance) * forceMagnitude * body.mass,
+                                y: (dy / distance) * forceMagnitude * body.mass
+                            };
+
+                            Body.applyForce(body, body.position, force);
+
+                            // 增加旋轉效果
+                            const rotationSpeed = 0.1 * (1 - distance / ATTRACTION_RADIUS);
+                            Body.setAngularVelocity(body, body.angularVelocity + rotationSpeed);
+
+                            // 當物體進入銷毀範圍
+                            if (distance < DESTROY_RADIUS) {
+                                if (typeof body.render.opacity === 'undefined') {
+                                    body.render.opacity = 1;
+                                }
+                                
+                                body.render.opacity -= 0.15;
+
+                                if (body.render.opacity <= 0.1) {
+                                    World.remove(engine.world, body);
+                                }
+
+                                const scale = 0.95;
+                                Body.scale(body, scale, scale);
+                            }
+                        }
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>

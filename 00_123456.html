@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>MediaPipe 人臉偵測</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            position: relative;
+        }
+        #webcam {
+            transform: rotateY(180deg);
+            -webkit-transform: rotateY(180deg);
+            width: 1280px;
+            height: 720px;
+        }
+        #output_canvas {
+            position: absolute;
+            left: 0;
+            top: 0;
+            transform: rotateY(180deg);
+            -webkit-transform: rotateY(180deg);
+        }
+        #status {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 14px;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div id="status">系統狀態: 初始化中...</div>
+    <div class="container">
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="output_canvas"></canvas>
+    </div>
+
+    <script type="module">
+        import vision from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
+        const { FaceLandmarker, FilesetResolver, DrawingUtils } = vision;
+
+        const video = document.getElementById("webcam");
+        const canvas = document.getElementById("output_canvas");
+        const ctx = canvas.getContext("2d");
+        const statusDiv = document.getElementById("status");
+        let faceLandmarker;
+        let drawingUtils;
+        let lastVideoTime = -1;
+        let results = undefined;
+
+        // 更新狀態顯示
+        function updateStatus(message, isError = false) {
+            statusDiv.style.backgroundColor = isError ? 'rgba(255,0,0,0.7)' : 'rgba(0,0,0,0.7)';
+            statusDiv.textContent = message;
+        }
+
+        // 初始化 FaceLandmarker
+        async function initializeFaceLandmarker() {
+            try {
+                updateStatus("載入 MediaPipe 模型中...");
+                const filesetResolver = await FilesetResolver.forVisionTasks(
+                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+                );
+                faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+                    baseOptions: {
+                        modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task`,
+                        delegate: "GPU"
+                    },
+                    outputFaceBlendshapes: true,
+                    runningMode: "VIDEO",
+                    numFaces: 1
+                });
+                drawingUtils = new DrawingUtils(ctx);
+                updateStatus("模型載入完成，啟動攝影機...");
+                startCamera();
+            } catch (error) {
+                updateStatus(`初始化錯誤: ${error.message}`, true);
+                console.error(error);
+            }
+        }
+
+        // 啟動攝影機
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: 1280,
+                        height: 720
+                    }
+                });
+                video.srcObject = stream;
+                video.addEventListener("loadeddata", predictWebcam);
+                updateStatus("系統運作中");
+            } catch (error) {
+                updateStatus(`攝影機啟動錯誤: ${error.message}`, true);
+                console.error(error);
+            }
+        }
+
+        // 預測和繪製
+        async function predictWebcam() {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+
+            if (lastVideoTime !== video.currentTime) {
+                lastVideoTime = video.currentTime;
+                results = faceLandmarker.detectForVideo(video, performance.now());
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (results.faceLandmarks) {
+                for (const landmarks of results.faceLandmarks) {
+                    drawingUtils.drawConnectors(
+                        landmarks,
+                        FaceLandmarker.FACE_LANDMARKS_TESSELATION,
+                        { color: "#C0C0C070", lineWidth: 1 }
+                    );
+                    drawingUtils.drawConnectors(
+                        landmarks,
+                        FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE,
+                        { color: "#FF3030" }
+                    );
+                    drawingUtils.drawConnectors(
+                        landmarks,
+                        FaceLandmarker.FACE_LANDMARKS_RIGHT_EYEBROW,
+                        { color: "#FF3030" }
+                    );
+                    drawingUtils.drawConnectors(
+                        landmarks,
+                        FaceLandmarker.FACE_LANDMARKS_LEFT_EYE,
+                        { color: "#30FF30" }
+                    );
+                    drawingUtils.drawConnectors(
+                        landmarks,
+                        FaceLandmarker.FACE_LANDMARKS_LEFT_EYEBROW,
+                        { color: "#30FF30" }
+                    );
+                    drawingUtils.drawConnectors(
+                        landmarks,
+                        FaceLandmarker.FACE_LANDMARKS_FACE_OVAL,
+                        { color: "#E0E0E0" }
+                    );
+                    drawingUtils.drawConnectors(
+                        landmarks,
+                        FaceLandmarker.FACE_LANDMARKS_LIPS,
+                        { color: "#E0E0E0" }
+                    );
+                }
+            }
+
+            requestAnimationFrame(predictWebcam);
+        }
+
+        // 啟動程式
+        initializeFaceLandmarker();
+    </script>
+</body>
+</html>

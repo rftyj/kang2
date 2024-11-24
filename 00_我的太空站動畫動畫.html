@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;ss
+            background: #0a0a2a;
+            cursor: none;
+        }
+        
+            position: fixed;
+            font-size: 300px;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1;
+        }
+        
+        #moon {
+            position: fixed;
+            width: 200px;
+            height: 200px;
+            pointer-events: none;
+            transition: all 0.1s ease;
+            z-index: 0;
+        }
+        
+        .star {
+            position: fixed;
+            color: white;
+            opacity: 0.5;
+            transition: opacity 2s ease;
+        }
+        
+        .hint-text {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 18px;
+            text-align: center;
+            z-index: 999;
+        }
+    </style>
+</head>
+<body>
+    <div id="moon"><img src="./image/123456789.png" style="width: 100%; height: 100%;"></div>
+    <div id="earth">🌍</div>
+    <audio id="bgMusic" loop>
+        <source src="./music/2468.mp3" type="audio/mp3">
+    </audio>
+    <div class="hint-text">點擊畫面播放音樂</div>
+
+    <script>
+        const moon = document.getElementById('moon');
+        const earth = document.getElementById('earth');
+        const earthPhases = ['🌍', '🌎', '🌏'];
+        let earthPhase = 0;
+        let lastX = 0;
+        const bgMusic = document.getElementById('bgMusic');
+        const hintText = document.querySelector('.hint-text');
+        let isMusicPlaying = false;
+        
+        // 滑鼠追蹤與圖層控制
+        document.addEventListener('mousemove', (e) => {
+            moon.style.left = (e.clientX - 100) + 'px';
+            moon.style.top = (e.clientY - 100) + 'px';
+            
+            // 判斷滑鼠移動方向並調整圖層
+            if (e.clientX > lastX) {
+                // 向右移動，月亮在地球下面
+                moon.style.zIndex = 0;
+                earth.style.zIndex = 1;
+            } else {
+                // 向左移動，月亮在地球上面
+                moon.style.zIndex = 2;
+                earth.style.zIndex = 1;
+            }
+            lastX = e.clientX;
+        });
+
+        // 地球動畫
+        setInterval(() => {
+            earthPhase = (earthPhase + 1) % earthPhases.length;
+            earth.textContent = earthPhases[earthPhase];
+        }, 1000); // 每秒更換一次
+
+        // 產生星星
+        function createStar() {
+            const star = document.createElement('div');
+            star.className = 'star';
+            star.style.left = Math.random() * window.innerWidth + 'px';
+            star.style.top = Math.random() * window.innerHeight + 'px';
+            star.textContent = '⭐';
+            star.style.fontSize = (Math.random() * 10 + 5) + 'px';
+            document.body.appendChild(star);
+            return star;
+        }
+
+        // 星星閃爍效果
+        function twinkleStar(star) {
+            setInterval(() => {
+                star.style.opacity = Math.random() * 0.8 + 0.1;
+            }, Math.random() * 3000 + 1000);
+        }
+
+        // 初始化100顆星星
+        for(let i = 0; i < 100; i++) {
+            const star = createStar();
+            twinkleStar(star);
+        }
+
+        document.addEventListener('click', () => {
+            if (!isMusicPlaying) {
+                bgMusic.play();
+                isMusicPlaying = true;
+                hintText.style.display = 'none'; // 播放後隱藏提示文字
+            }
+        });
+    </script>
+</body>
+</html>
